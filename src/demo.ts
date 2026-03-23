@@ -1,4 +1,5 @@
 import { ThorchainClient } from "./thorchainClient.js";
+import { QuoteInspector } from "./quoteInspector.js";
 
 async function main(): Promise<void> {
   const client = new ThorchainClient();
@@ -6,11 +7,11 @@ async function main(): Promise<void> {
   console.log("Fetching inbound addresses...");
   const inbound = await client.getInboundAddresses();
 
-  const btc = inbound.find((x) => x.chain === "BTC");
-  const eth = inbound.find((x) => x.chain === "ETH");
+  const btcInbound = inbound.find((x) => x.chain === "BTC");
+  const ethInbound = inbound.find((x) => x.chain === "ETH");
 
-  console.log("BTC inbound:", btc);
-  console.log("ETH inbound:", eth);
+  console.log("BTC inbound:", btcInbound);
+  console.log("ETH inbound:", ethInbound);
 
   console.log("\nFetching sample swap quote...");
   const quote = await client.getSwapQuote({
@@ -22,12 +23,25 @@ async function main(): Promise<void> {
     streamingQuantity: 0
   });
 
-  console.log("Quote inbound address:", quote.inbound_address);
-  console.log("Quote memo:", quote.memo);
-  console.log("Expected out:", quote.expected_amount_out);
-  console.log("Expiry:", quote.expiry);
-  console.log("Warning:", quote.warning);
-  console.log("Notes:", quote.notes);
+  console.log("\nRaw quote:");
+  console.log(JSON.stringify(quote, null, 2));
+
+  const fromChain = quote.memo.split(":")[0].includes("=") ? "BTC" : "BTC";
+  const inboundState = inbound.find((x) => x.chain === fromChain);
+
+  const normalized = QuoteInspector.analyze(quote, inboundState);
+
+  console.log("\nTonalli normalized quote:");
+  console.log(JSON.stringify(normalized, null, 2));
+
+  if (!normalized.isViable) {
+    console.log("\nSwap blocked:");
+    console.log(normalized.blockerReason);
+  } else {
+    console.log("\nSwap is viable.");
+    console.log(`Target vault: ${normalized.targetVaultAddress}`);
+    console.log(`OP_RETURN memo: ${normalized.opReturnMemo}`);
+  }
 }
 
 main().catch((error) => {
